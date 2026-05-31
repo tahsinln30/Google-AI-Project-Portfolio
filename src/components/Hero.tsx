@@ -177,9 +177,8 @@ export default function Hero() {
                 <a
                   href={personalInfo.linkedin}
                   target="_blank"
-                  rel="noreferrer"
-                  referrerPolicy="no-referrer"
-                  className="w-8.5 h-8.5 rounded-lg border border-slate-800 bg-slate-950 hover:bg-slate-900 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-colors"
+                  rel="noopener noreferrer"
+                  className="w-8.5 h-8.5 rounded-lg border border-slate-800 bg-slate-950 hover:bg-slate-900 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
                   title="Connect on LinkedIn"
                 >
                   <Linkedin className="w-4 h-4" />
@@ -188,8 +187,7 @@ export default function Hero() {
                 <a
                   href={personalInfo.github}
                   target="_blank"
-                  rel="noreferrer"
-                  referrerPolicy="no-referrer"
+                  rel="noopener noreferrer"
                   className="w-8.5 h-8.5 rounded-lg border border-slate-800 bg-slate-950 hover:bg-slate-900 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
                   title="Explore on GitHub"
                 >

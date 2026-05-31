@@ -12,10 +12,25 @@ import Honors from './components/Honors';
 import Contact from './components/Contact';
 import { personalInfo } from './data';
 import { Bug, ArrowUp, Briefcase, Github, Linkedin } from 'lucide-react';
+import LinkedInPreviewModal from './components/LinkedInPreviewModal';
 
 export default function App() {
   const [activeSection, setActiveSection] = useState('about');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
+
+  // Intercept all LinkedIn clicks globally to display our public login-bypass mirror
+  useEffect(() => {
+    const handleLinkedInClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('a');
+      if (target && target.href && (target.href.includes('linkedin.com') || target.href.includes('linkedin'))) {
+        e.preventDefault();
+        setIsLinkedInModalOpen(true);
+      }
+    };
+    document.addEventListener('click', handleLinkedInClick, true);
+    return () => document.removeEventListener('click', handleLinkedInClick, true);
+  }, []);
 
   // ScrollSpy to update Navbar links automatically as user scrolls
   useEffect(() => {
@@ -101,8 +116,7 @@ export default function App() {
             <a
               href={personalInfo.linkedin}
               target="_blank"
-              rel="noreferrer"
-              referrerPolicy="no-referrer"
+              rel="noopener noreferrer"
               className="w-10 h-10 rounded-xl border border-blue-950/60 bg-slate-900/40 hover:bg-slate-900/80 flex items-center justify-center text-slate-400 hover:text-blue-400 hover:border-blue-900/40 transition-all shadow-inner"
               title="Connect on LinkedIn"
             >
@@ -111,8 +125,7 @@ export default function App() {
             <a
               href={personalInfo.github}
               target="_blank"
-              rel="noreferrer"
-              referrerPolicy="no-referrer"
+              rel="noopener noreferrer"
               className="w-10 h-10 rounded-xl border border-blue-950/60 bg-slate-900/40 hover:bg-slate-900/80 flex items-center justify-center text-slate-400 hover:text-white hover:border-blue-900/40 transition-all shadow-inner"
               title="Explore on GitHub"
             >
@@ -141,6 +154,9 @@ export default function App() {
           <ArrowUp className="w-5 h-5" />
         </button>
       )}
+
+      {/* LinkedIn Profile Emulator Overlay for logged-out guests */}
+      <LinkedInPreviewModal isOpen={isLinkedInModalOpen} onClose={() => setIsLinkedInModalOpen(false)} />
     </div>
   );
 }

@@ -167,18 +167,18 @@ export default function Contact() {
                 <a
                   href={personalInfo.linkedin}
                   target="_blank"
-                  rel="noreferrer"
-                  referrerPolicy="no-referrer"
+                  rel="noopener noreferrer"
                   className="w-10 h-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 hover:text-blue-600 transition-colors shadow-sm"
+                  title="Connect on LinkedIn"
                 >
                   <Linkedin className="w-4 h-4" />
                 </a>
                 <a
                   href={personalInfo.github}
                   target="_blank"
-                  rel="noreferrer"
-                  referrerPolicy="no-referrer"
+                  rel="noopener noreferrer"
                   className="w-10 h-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors shadow-sm"
+                  title="Explore on GitHub"
                 >
                   <Github className="w-4 h-4" />
                 </a>

@@ -12,7 +12,7 @@ export const personalInfo = {
   interests: ['Photography', 'Traveling', 'Driving'],
   location: 'Dhaka, Bangladesh',
   github: 'https://github.com/tahsinln30', // user mentions uploading to GitHub
-  linkedin: 'https://www.linkedin.com/in/mdtahsinahmed/',
+  linkedin: 'https://bd.linkedin.com/in/mdtahsinahmed',
 };
 
 export const educationList: EducationItem[] = [

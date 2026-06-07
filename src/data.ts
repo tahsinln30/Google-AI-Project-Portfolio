@@ -5,7 +5,7 @@ export const personalInfo = {
   title: 'Software Quality Assurance Engineer',
   tagline: 'Bridging technical software engineering & strategic management with a focus on robust software quality and rigorous verification.',
   about: 'I am a passionate and detail-oriented Software Quality Assurance Engineer with multiple years of expertise in manual, automated, API, and load testing. Combining an extensive technical foundation (MSc in Computer Science) with active business specialization (MBA at University of Dhaka), I specialize in building, verifying, and delivering reliable software. My focus is on creating automated workflows, verifying API integrity, detecting performance bottlenecks early, and ensuring flawless user experiences.',
-  email: 'tahsinahmed309203@gmail.com',
+  email: 'tahsinln30@yahoo.com',
   corporateEmail: 'tahsin@bluetech.solutions',
   phone: '01732636946',
   bloodGroup: 'A (+ve)',

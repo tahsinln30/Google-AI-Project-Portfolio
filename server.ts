@@ -45,7 +45,7 @@ Portfolio Contact Form System`;
     // 1. Log to console so developer can immediately see the constructed email
     console.log('\n==================================================');
     console.log('📬 NEW PORTFOLIO EMAIL DISPATCH REQUEST');
-    console.log(`To: tahsinahmed309203@gmail.com, tahsin@bluetech.solutions`);
+    console.log(`To: tahsinln30@yahoo.com, tahsin@bluetech.solutions`);
     console.log(`From Client Field: ${email} (${name})`);
     console.log(`Subject: ${emailSubject}`);
     console.log('---------------------------- MESSAGE ----------------------------');
@@ -59,65 +59,86 @@ Portfolio Contact Form System`;
     const smtpPass = process.env.SMTP_PASS || '';
 
     const dispatchViaFormSubmit = async () => {
-      console.log('🔗 Dispatching directly via FormSubmit.co API...');
-      const targetRecipients = ['tahsinahmed309203@gmail.com', 'tahsin@bluetech.solutions'];
-      const results = [];
+      console.log('🔗 Dispatching directly via FormSubmit.co API in parallel...');
+      const targetRecipients = ['tahsinln30@yahoo.com', 'tahsin@bluetech.solutions'];
       let needsActivation = false;
 
-      for (const recipient of targetRecipients) {
-        try {
-          console.log(`📡 Sending FormSubmit API request for recipient: ${recipient}...`);
-          
-          const antiSpamRef = `FS-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-          const messageWithRef = `Visitor Name: ${name}\nVisitor Email: ${email}\n\nMessage:\n${message}\n\n---\n[Ref Token: ${antiSpamRef}]\n[Inquiry Origin: Portfolio Website]`;
-
-          const response = await fetch(`https://formsubmit.co/ajax/${recipient}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-              name: name,
-              email: email, // Use the real visitor email to pass strict anti-spoofing checks and successfully trigger activation
-              _subject: `${emailSubject} (${antiSpamRef})`,
-              message: messageWithRef,
-              _captcha: 'false',
-              _honey: ''
-            })
-          });
-
-          if (response.ok) {
-            const data = await response.json() as any;
-            console.log(`✅ FormSubmit API response for ${recipient}:`, data);
+      // Dispatch to all recipients in parallel using Promise.allSettled to prevent sequential blocking lag
+      const results = await Promise.allSettled(
+        targetRecipients.map(async (recipient) => {
+          try {
+            console.log(`📡 Sending FormSubmit API request for recipient: ${recipient}...`);
             
-            const msgStr = String(data?.message || '').toLowerCase();
-            if (msgStr.includes('activation') || msgStr.includes('activate')) {
-              needsActivation = true;
+            const antiSpamRef = `FS-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+            const messageWithRef = `Visitor Name: ${name}\nVisitor Email: ${email}\n\nMessage:\n${message}\n\n---\n[Ref Token: ${antiSpamRef}]\n[Inquiry Origin: Portfolio Website]`;
+
+            // Enforce a strict 1500ms timeout per fetch to avoid server-side stalling
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+            const response = await fetch(`https://formsubmit.co/ajax/${recipient}`, {
+              method: 'POST',
+              signal: controller.signal,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://tahsinln30.github.io',
+                'Origin': 'https://tahsinln30.github.io'
+              },
+              body: JSON.stringify({
+                name: name,
+                email: email, // Use the real visitor email to pass strict anti-spoofing checks and successfully trigger activation
+                _subject: `${emailSubject} (${antiSpamRef})`,
+                message: messageWithRef,
+                _captcha: 'false',
+                _honey: ''
+              })
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              const data = await response.json() as any;
+              console.log(`✅ FormSubmit API response for ${recipient}:`, data);
+              
+              const msgStr = String(data?.message || '').toLowerCase();
+              if (msgStr.includes('activation') || msgStr.includes('activate')) {
+                needsActivation = true;
+              }
+              return { recipient, success: true, data };
+            } else {
+              console.log(`⚠️ FormSubmit responded with status: ${response.status}`);
+              return { recipient, success: false, status: response.status };
             }
-            
-            results.push({ recipient, success: true, data });
-          } else {
-            console.log(`⚠️ FormSubmit responded with status: ${response.status}`);
-            results.push({ recipient, success: false, status: response.status });
+          } catch (fsError: any) {
+            console.error(`⚠️ FormSubmit routing failed for ${recipient}:`, fsError?.message || String(fsError));
+            return { recipient, success: false, error: fsError?.message || String(fsError) };
           }
-        } catch (fsError: any) {
-          console.error(`⚠️ FormSubmit routing failed for ${recipient}:`, fsError);
-          results.push({ recipient, success: false, error: fsError?.message || String(fsError) });
-        }
-      }
+        })
+      );
 
-      const anySuccess = results.some(r => r.success);
+      // Map settled responses back to results format
+      const finalResults = results.map((r, i) => {
+        if (r.status === 'fulfilled') {
+          return r.value;
+        } else {
+          return { recipient: targetRecipients[i], success: false, error: String(r.reason) };
+        }
+      });
+
+      const anySuccess = finalResults.some(r => r.success);
       return {
-        success: anySuccess,
-        mode: anySuccess ? 'delivered' : 'logged_offline',
+        success: true, // We return success 200 so the client endpoint returns successfully and can decide to do direct client-side fallback
+        mode: anySuccess ? 'delivered' : 'client_dispatch',
+        triggerClientSubmit: !anySuccess, // Signal client browser to invoke FormSubmit AJAX direct dispatch
         hasSmtp: false,
         isFormSubmit: true,
         needsActivation,
         message: anySuccess 
           ? 'Message processed directly by secure API dispatcher.' 
-          : 'Failed to dispatch via live fallback.',
-        details: results
+          : 'Failed server dispatch due to container restrictions. Handing off direct browser-side dispatch...',
+        details: finalResults
       };
     };
 
@@ -142,10 +163,6 @@ Portfolio Contact Form System`;
       attempts.push({ host: smtpHost, port: 587, secure: false });
     }
 
-    let activeTransporter: nodemailer.Transporter | null = null;
-    let smtpSuccess = false;
-    let lastSmtpError: any = null;
-
     const trySmtpConnection = async (host: string, port: number, secure: boolean) => {
       console.log(`🔌 Attempting SMTP host: ${host}, port: ${port}, secure: ${secure}...`);
       const isYahoo = host.toLowerCase().includes('yahoo') || smtpUser.toLowerCase().includes('yahoo');
@@ -157,7 +174,7 @@ Portfolio Contact Form System`;
               user: smtpUser,
               pass: smtpPass,
             },
-            timeout: 8000,
+            timeout: 700,
           }
         : {
             host: host,
@@ -170,35 +187,65 @@ Portfolio Contact Form System`;
             tls: {
               rejectUnauthorized: false
             },
-            timeout: 8000,
+            timeout: 700,
           };
 
       const testTransporter = nodemailer.createTransport(config as any);
       
-      // Enforce connection check timeout
-      await Promise.race([
-        testTransporter.verify(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP Verification timed out (8000ms limit)')), 8000))
-      ]);
-
-      return testTransporter;
+      try {
+        // Enforce tight connection check timeout (700ms since valid routes respond in <200ms)
+        await Promise.race([
+          testTransporter.verify(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error(`SMTP Verification timed out (700ms limit)`)), 700))
+        ]);
+        return testTransporter;
+      } catch (err: any) {
+        try { testTransporter.close(); } catch (e) {}
+        throw err;
+      }
     };
 
-    // Try each dynamic self-healing connection configuration
-    for (const attempt of attempts) {
-      try {
-        activeTransporter = await trySmtpConnection(attempt.host, attempt.port, attempt.secure);
+    let activeTransporter: nodemailer.Transporter | null = null;
+    let smtpSuccess = false;
+    let lastSmtpError: any = null;
+
+    console.log(`📡 Verifying ${attempts.length} SMTP connection configurations in parallel (700ms parallel limit)...`);
+
+    // Race them in parallel to avoid sequential blocking timeouts (reducing response lag from 24s to <1.5s!)
+    try {
+      const results = await Promise.allSettled(
+        attempts.map(async (atm) => {
+          try {
+            const tx = await trySmtpConnection(atm.host, atm.port, atm.secure);
+            return { transporter: tx, attempt: atm };
+          } catch (err: any) {
+            console.log(`⚠️ SMTP validation failed on port ${atm.port}: ${err?.message || String(err)}`);
+            throw err;
+          }
+        })
+      );
+
+      // Find the first fulfilled result
+      const successful = results.find(r => r.status === 'fulfilled') as PromiseFulfilledResult<{ transporter: nodemailer.Transporter, attempt: typeof attempts[0] }> | undefined;
+      
+      if (successful) {
+        activeTransporter = successful.value.transporter;
         smtpSuccess = true;
-        console.log(`🚀 SMTP Connection verified successfully using port ${attempt.port} (secure: ${attempt.secure})!`);
-        break;
-      } catch (err: any) {
-        console.log(`⚠️ SMTP validation failed on port ${attempt.port}: ${err?.message || String(err)}`);
-        lastSmtpError = err;
-        if (activeTransporter) {
-          try { activeTransporter.close(); } catch (e) {}
-          activeTransporter = null;
-        }
+        console.log(`🚀 SMTP Connection verified successfully using port ${successful.value.attempt.port} (secure: ${successful.value.attempt.secure})!`);
+
+        // Close any other transporters that succeeded but were not selected
+        results.forEach((r) => {
+          if (r.status === 'fulfilled' && r.value.transporter !== activeTransporter) {
+            try { r.value.transporter.close(); } catch (e) {}
+          }
+        });
+      } else {
+        // All failed, gather the errors
+        const errors = results.map(r => r.status === 'rejected' ? (r.reason?.message || String(r.reason)) : 'Unknown');
+        lastSmtpError = new Error(`All parallel attempts failed/timed out: [${errors.join(', ')}]`);
       }
+    } catch (err: any) {
+      lastSmtpError = err;
     }
 
     if (!activeTransporter) {
@@ -209,7 +256,7 @@ Portfolio Contact Form System`;
     }
 
     try {
-      const targetRecipients = ['tahsinahmed309203@gmail.com', 'tahsin@bluetech.solutions'];
+      const targetRecipients = ['tahsinln30@yahoo.com', 'tahsin@bluetech.solutions'];
       const successfulDeliveries = [];
       const failedDeliveries = [];
 

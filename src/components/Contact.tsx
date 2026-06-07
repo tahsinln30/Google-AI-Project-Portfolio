@@ -28,6 +28,58 @@ export default function Contact() {
     messageFilled: false
   });
 
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  const presets = [
+    {
+      id: 'hire',
+      label: 'Permanent Placement 💼',
+      subject: 'Full-Time SQA Position Inquiry',
+      message: 'Hi Tahsin,\n\nWe are impressed with your dual technical (MSc CS) and strategic (MBA Dhaka) background. We have an opening for a Software Quality Assurance Engineer to lead manual, API, and automated testing (Cypress/Playwright) suites. Let\'s schedule an interview to discuss next steps.\n\nSincerely,\n[Your Name]'
+    },
+    {
+      id: 'contract',
+      label: 'QA Consultancy 🛠️',
+      subject: 'Contract QA & Test Suite Advisory',
+      message: 'Hi Tahsin,\n\nWe are looking for an experienced SQA consultant to audit our existing platform and establish robust end-to-end automation pipelines (Cypress/K6 load testing). Please let us know your standard consulting slots and rates.\n\nSincerely,\n[Your Name]'
+    },
+    {
+      id: 'audit',
+      label: 'Free Bug Audit 🔍',
+      subject: 'Complimentary Mobile/Web Bug Check',
+      message: 'Hi Tahsin,\n\nWe would love to take advantage of your complimentary high-level exploratory and ad-hoc bug audit check on our digital application. Please let us know what details you require to perform initial quality tests.\n\nSincerely,\n[Your Name]'
+    },
+    {
+      id: 'general',
+      label: 'General Inquiry 💬',
+      subject: 'General Technical Inquiry / Networking',
+      message: 'Hi Tahsin,\n\nI reached out via your portfolio regarding software quality testing systems or to discuss potential collaboration and strategic leadership opportunities in Dhaka.\n\nSincerely,\n[Your Name]'
+    }
+  ];
+
+  const applyPreset = (presetId: string) => {
+    const preset = presets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    setSelectedPreset(presetId);
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        subject: preset.subject,
+        message: preset.message
+      };
+      
+      // Update validation in sync
+      setSanityChecks({
+        nameLength: next.name.trim().length >= 2,
+        validEmail: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email),
+        messageFilled: next.message.trim().length >= 10
+      });
+
+      return next;
+    });
+  };
+
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => {
@@ -63,7 +115,12 @@ export default function Contact() {
     }, 2000);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const [submitError, setSubmitError] = useState('');
+  const [apiMode, setApiMode] = useState<'delivered' | 'logged_offline' | null>(null);
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
+  const [needsActivation, setNeedsActivation] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
     // If not validated, make errors visible and don't submit
@@ -74,19 +131,185 @@ export default function Contact() {
 
     setIsSubmitting(true);
     setShowErrors(false);
+    setSubmitError('');
+    setApiMode(null);
+    setIsFallbackMode(false);
+    setNeedsActivation(false);
 
-    // Store the generated link
+    // Store the generated link for manual contingency usage
     setLastMailto(mailtoUrl);
 
-    // Direct client mailto invocation
     try {
-      window.location.href = mailtoUrl;
-    } catch (mailtoErr) {
-      console.warn('Mailto redirection issue:', mailtoErr);
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          subject: subjectText,
+          message: formData.message,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.success === false) {
+        throw new Error(result.error || 'Failed to submit form directly to server.');
+      }
+
+      console.log('API submission result:', result);
+      
+      let finalMode = result.mode || 'delivered';
+      let finalActivation = !!result.needsActivation;
+      let finalFallback = result.mode === 'logged_offline';
+
+      if (result.triggerClientSubmit) {
+        console.log('🔄 Server-to-SMTP/Proxy was blocked. Initiating direct browser FormSubmit AJAX dispatch in parallel...');
+        let hasBrowserSuccess = false;
+        let isBrowserActivationRequired = false;
+        
+        // Dispatch to recipient(s) directly from visitor's browser in parallel
+        const targetBrowserRecipients = ['tahsinln30@yahoo.com', 'tahsin@bluetech.solutions'];
+        
+        const parallelBrowserDispatches = await Promise.allSettled(
+          targetBrowserRecipients.map(async (recipient) => {
+            try {
+              console.log(`📡 Direct browser FormSubmit send to: ${recipient}...`);
+              const antiSpamRef = `FS-BRW-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+              const messageWithRef = `Visitor Name: ${formData.name}\nVisitor Email: ${formData.email}\n\nMessage:\n${formData.message}\n\n---\n[Ref Token: ${antiSpamRef}]\n[Inquiry Origin: Direct Browser Dispatch]`;
+
+              const fsResponse = await fetch(`https://formsubmit.co/ajax/${recipient}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                  name: formData.name,
+                  email: formData.email,
+                  _subject: `${subjectText} (${antiSpamRef})`,
+                  message: messageWithRef,
+                  _captcha: 'false'
+                })
+              });
+
+              if (fsResponse.ok) {
+                const fsData = await fsResponse.json();
+                console.log(`✅ Direct browser FormSubmit dispatch to ${recipient} succeeded!`, fsData);
+                
+                const msgStr = String(fsData?.message || '').toLowerCase();
+                const activationNeeded = msgStr.includes('activation') || msgStr.includes('activate');
+                return { success: true, needsActivation: activationNeeded };
+              } else {
+                console.warn(`⚠️ Direct browser FormSubmit to ${recipient} failed with standard status: ${fsResponse.status}`);
+                return { success: false, status: fsResponse.status };
+              }
+            } catch (brwErr: any) {
+              console.error(`⚠️ Exception during direct browser FormSubmit call to ${recipient}:`, brwErr);
+              return { success: false, error: brwErr?.message || String(brwErr) };
+            }
+          })
+        );
+
+        // Evaluate parallel results
+        parallelBrowserDispatches.forEach((item) => {
+          if (item.status === 'fulfilled' && item.value.success) {
+            hasBrowserSuccess = true;
+            if (item.value.needsActivation) {
+              isBrowserActivationRequired = true;
+            }
+          }
+        });
+
+        if (hasBrowserSuccess) {
+          finalMode = 'delivered';
+          finalActivation = isBrowserActivationRequired;
+          finalFallback = false;
+        } else {
+          // Both server and browser dispatches failed, fallback to mailto draft mode
+          finalMode = 'logged_offline';
+          finalFallback = true;
+          setSubmitError('Secure API gateways endpoints were unresponsive. Manual copy-paste or webmail links options are enabled below.');
+        }
+      }
+
+      setApiMode(finalMode);
+      setNeedsActivation(finalActivation);
+      setIsFallbackMode(finalFallback);
+      
+      setIsSubmitting(false);
+      setSubmitted(true);
+    } catch (err: any) {
+      console.error('API submission error:', err);
+      
+      // If server endpoint was totally offline, try browser dispatch directly before failing
+      console.log('🔄 API endpoint offline/errored. Attempting direct browser FormSubmit dispatch as emergency parallel recovery...');
+      let hasBrowserSuccess = false;
+      let isBrowserActivationRequired = false;
+      
+      try {
+        const emergencyRecipients = ['tahsinln30@yahoo.com', 'tahsin@bluetech.solutions'];
+        const parallelEmergencyDispatches = await Promise.allSettled(
+          emergencyRecipients.map(async (recipient) => {
+            try {
+              const antiSpamRef = `FS-EMG-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+              const messageWithRef = `Visitor Name: ${formData.name}\nVisitor Email: ${formData.email}\n\nMessage:\n${formData.message}\n\n---\n[Ref Token: ${antiSpamRef}]\n[Inquiry Origin: Emergency Browser Dispatch]`;
+
+              const fsResponse = await fetch(`https://formsubmit.co/ajax/${recipient}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                  name: formData.name,
+                  email: formData.email,
+                  _subject: `${subjectText} (${antiSpamRef})`,
+                  message: messageWithRef,
+                  _captcha: 'false'
+                })
+              });
+
+              if (fsResponse.ok) {
+                const fsData = await fsResponse.json();
+                const msgStr = String(fsData?.message || '').toLowerCase();
+                const activationNeeded = msgStr.includes('activation') || msgStr.includes('activate');
+                return { success: true, needsActivation: activationNeeded };
+              }
+              return { success: false };
+            } catch (e: any) {
+              return { success: false, error: e?.message || String(e) };
+            }
+          })
+        );
+
+        parallelEmergencyDispatches.forEach((item) => {
+          if (item.status === 'fulfilled' && item.value.success) {
+            hasBrowserSuccess = true;
+            if (item.value.needsActivation) {
+              isBrowserActivationRequired = true;
+            }
+          }
+        });
+      } catch (recoveryErr) {
+        console.error('Emergency recovery thread failed:', recoveryErr);
+      }
+
+      if (hasBrowserSuccess) {
+        setApiMode('delivered');
+        setNeedsActivation(isBrowserActivationRequired);
+        setIsFallbackMode(false);
+      } else {
+        setSubmitError(err?.message || 'An error occurred while dispatching your request to the server.');
+        setIsFallbackMode(true);
+      }
+      
+      setIsSubmitting(false);
+      // Still show the success screen with manual or direct options so the visitor never loses state
+      setSubmitted(true);
     }
-    
-    setIsSubmitting(false);
-    setSubmitted(true);
   };
 
   return (
@@ -157,7 +380,7 @@ export default function Contact() {
                     <span>Direct Mail Transmission</span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Your messages are built dynamically and opened straight in your local e-mail dispatcher. This ensures secure, zero-tracked, and direct communication.
+                    Your messages are dispatched directly through our secure backend API gateway, or processed via default mail client configurations for robust delivery.
                   </p>
                 </div>
               </div>
@@ -190,19 +413,59 @@ export default function Contact() {
           <div className="lg:col-span-7">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 hover:shadow-lg transition-all text-left">
               
-              {submitted ? (
+               {submitted ? (
                 <div className="py-6 text-center space-y-6 animate-fade-in">
-                  <div className="w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto shadow-inner bg-blue-50 border-blue-100 text-blue-600 animate-pulse">
-                    <Mail className="w-8 h-8 text-blue-600" />
+                  <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto shadow-inner ${
+                    needsActivation 
+                      ? 'bg-amber-50 border-amber-100 text-amber-500 animate-pulse'
+                      : isFallbackMode
+                      ? 'bg-blue-50 border-blue-100 text-blue-600 animate-pulse'
+                      : 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                  }`}>
+                    {needsActivation ? (
+                      <Mail className="w-8 h-8 text-amber-500" />
+                    ) : isFallbackMode ? (
+                      <Mail className="w-8 h-8 text-blue-600" />
+                    ) : (
+                      <CheckCircle className="w-8 h-8 text-emerald-600 animate-scale" />
+                    )}
                   </div>
                   
                   <div className="space-y-2 px-4 w-full">
                     <h3 className="text-xl font-bold text-slate-900 font-sans">
-                      Secure Email Draft Ready!
+                      {needsActivation 
+                        ? 'Verification Check Sent!' 
+                        : isFallbackMode 
+                        ? 'Secure Email Draft Ready!' 
+                        : 'Message Delivered Successfully!'}
                     </h3>
-                    <p className="text-slate-600 text-sm max-w-xl mx-auto leading-relaxed">
-                      To guarantee reliable, direct delivery directly to <strong>{personalInfo.email}</strong>, we have prepared a secure email draft. If your mail app did not open automatically, please click one of the quick options below or copy-paste using the toolkit:
-                    </p>
+                    <div className="text-slate-600 text-sm max-w-xl mx-auto leading-relaxed">
+                      {needsActivation ? (
+                        <div className="space-y-3">
+                          <p>
+                            We dispatched your message, but FormSubmit requires a <strong>one-time activation confirmation</strong>.
+                          </p>
+                          <div className="font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-left max-w-md mx-auto">
+                            👉 Please check your inbox (including Spam/Junk/Promo tab) on <strong>{personalInfo.email}</strong> or <strong>tahsinln30@yahoo.com</strong> for an email containing <strong>"Activate FormSubmit"</strong> and click the link inside it. Once clicked, all future submissions will send silently and automatically!
+                          </div>
+                        </div>
+                      ) : isFallbackMode ? (
+                        <div className="space-y-2">
+                          {submitError ? (
+                            <p className="font-mono text-[11px] font-bold text-red-500 bg-red-50 py-1 px-2.5 rounded border border-red-100 inline-block">
+                              Status Core Fallback: {submitError}
+                            </p>
+                          ) : null}
+                          <p>
+                            To guarantee reliable delivery directly to <strong>{personalInfo.email}</strong>, we have prepared a secure email draft. If your mail app did not open automatically, please click one of the quick options below or copy-paste using the toolkit:
+                          </p>
+                        </div>
+                      ) : (
+                        <p>
+                          Thank you! Your message has been sent successfully via professional gateway directly to <strong>{personalInfo.email}</strong>. No other action is required — I will reply swiftly!
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* 1-Click Send Grid */}
@@ -398,6 +661,7 @@ export default function Contact() {
                         setSubmitted(false);
                         setFormData({ name: '', email: '', subject: '', message: '' });
                         setSanityChecks({ nameLength: false, validEmail: false, messageFilled: false });
+                        setSelectedPreset(null);
                       }}
                       className="inline-flex items-center space-x-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
                     >
@@ -406,83 +670,150 @@ export default function Contact() {
                   </div>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {showErrors && !allChecksPass && (
-                    <div className="p-3.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-semibold leading-relaxed">
-                      ⚠️ Please make sure to fill out all the fields correctly. Brand names and text inputs must be valid, and your message should contain at least 10 characters.
+                <div className="space-y-6">
+                  {/* Preset Pills container */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">
+                      ✨ Blueprint Presets (Pre-fill Form Templates)
+                    </span>
+                    <div className="flex flex-wrap gap-2 text-left">
+                      {presets.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => applyPreset(p.id)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold font-sans transition-all border outline-none cursor-pointer ${
+                            selectedPreset === p.id 
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100/80 hover:border-slate-300'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Full Name</label>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {showErrors && !allChecksPass && (
+                      <div className="p-3.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-semibold leading-relaxed">
+                        ⚠️ Please make sure to fill out all the fields correctly. Brand names and text inputs must be valid, and your message should contain at least 10 characters.
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1 text-left font-sans">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Full Name</label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          required
+                          placeholder="e.g., Jane Cooper"
+                          className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm ${showErrors && !sanityChecks.nameLength ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
+                        />
+                      </div>
+                      <div className="space-y-1 text-left font-sans">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Email Address</label>
+                        <input
+                          type="email"
+                          name="email"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          required
+                          placeholder="e.g., cooper@company.com"
+                          className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm ${showErrors && !sanityChecks.validEmail ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-left">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Subject</label>
                       <input
                         type="text"
-                        name="name"
-                        value={formData.name}
+                        name="subject"
+                        value={formData.subject}
                         onChange={handleInputChange}
-                        required
-                        placeholder="e.g., Jane Cooper"
-                        className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm ${showErrors && !sanityChecks.nameLength ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
+                        placeholder="e.g., Inquiry regarding professional services, contract placements, etc."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Email Address</label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
+
+                    <div className="space-y-1 text-left">
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Your Message</label>
+                        <span className={`text-[10px] font-mono font-bold ${formData.message.trim().length >= 10 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                          {formData.message.trim().length} chars (min. 10)
+                        </span>
+                      </div>
+                      <textarea
+                        name="message"
+                        value={formData.message}
                         onChange={handleInputChange}
                         required
-                        placeholder="e.g., cooper@company.com"
-                        className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm ${showErrors && !sanityChecks.validEmail ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
+                        rows={4}
+                        placeholder="Type your message here... (min. 10 characters)"
+                        className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm min-h-[96px] ${showErrors && !sanityChecks.messageFilled ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
                       />
                     </div>
-                  </div>
 
-                  <div className="space-y-1 text-left">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Subject</label>
-                    <input
-                      type="text"
-                      name="subject"
-                      value={formData.subject}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Inquiry regarding professional services, contract placements, etc."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm"
-                    />
-                  </div>
+                    {/* SQA Test Pipeline Assertions Monitor */}
+                    <div className="bg-slate-950 text-slate-200 rounded-xl p-4 border border-slate-800 font-mono text-[11px] space-y-2.5 shadow-inner">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className={`w-2 h-2 rounded-full ${allChecksPass ? 'bg-emerald-500 hover:scale-110' : 'bg-amber-500 animate-pulse'}`} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">QA Pipeline Assertion Status</span>
+                        </div>
+                        <span className="text-[9px] text-blue-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">v1.2.5</span>
+                      </div>
+                      <div className="space-y-1.5 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">test_case_01 [name_length_assert]:</span>
+                          {sanityChecks.nameLength ? (
+                            <span className="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/30">PASS</span>
+                          ) : (
+                            <span className="text-slate-500">PENDING [Name &gt;= 2 chars]</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">test_case_02 [email_syntax_match]:</span>
+                          {sanityChecks.validEmail ? (
+                            <span className="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/30">PASS</span>
+                          ) : (
+                            <span className="text-slate-500">PENDING [Regex Verification]</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">test_case_03 [message_body_integrity]:</span>
+                          {sanityChecks.messageFilled ? (
+                            <span className="text-emerald-400 font-bold bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/30">PASS</span>
+                          ) : (
+                            <span className="text-slate-500">PENDING [Message &gt;= 10 chars]</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                  <div className="space-y-1 text-left">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block font-sans">Your Message</label>
-                    <textarea
-                      name="message"
-                      value={formData.message}
-                      onChange={handleInputChange}
-                      required
-                      rows={4}
-                      placeholder="Type your message here... (min. 10 characters)"
-                      className={`w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all shadow-sm min-h-[96px] ${showErrors && !sanityChecks.messageFilled ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/20' : 'border-slate-200'}`}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-sans text-xs font-bold py-3 px-4 rounded-xl shadow-lg hover:shadow-blue-600/10 active:scale-95 transition-all outline-none cursor-pointer"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-white animate-spin shrink-0" />
-                        <span>Dispatching Message...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5 text-white" />
-                        <span>Send Message</span>
-                      </>
-                    )}
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-sans text-xs font-bold py-3 px-4 rounded-xl shadow-lg hover:shadow-blue-600/10 active:scale-95 transition-all outline-none cursor-pointer"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-white animate-spin shrink-0" />
+                          <span>Dispatching Message...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5 text-white" />
+                          <span>Send Message</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
               )}
 
             </div>

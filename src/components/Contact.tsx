@@ -1,5 +1,5 @@
 import { useState, ChangeEvent, FormEvent } from 'react';
-import { Mail, MapPin, Send, CheckCircle, Bug, Github, Linkedin, Copy, Check } from 'lucide-react';
+import { Mail, MapPin, Send, CheckCircle, Bug, Github, Linkedin, Copy, Check, ExternalLink, FileText } from 'lucide-react';
 import { personalInfo } from '../data';
 
 export default function Contact() {
@@ -46,6 +46,15 @@ export default function Contact() {
 
   const allChecksPass = sanityChecks.nameLength && sanityChecks.validEmail && sanityChecks.messageFilled;
 
+  // Precompile direct and webmail links in sync with user form inputs
+  const subjectText = formData.subject.trim() || 'Software Quality Inquiry';
+  const emailBody = `Hi Tahsin,\n\n${formData.message}\n\nSincerely,\n${formData.name}\nEmail: ${formData.email}`;
+  const mailtoUrl = `mailto:${personalInfo.email}?cc=${encodeURIComponent(formData.email)}&subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(emailBody)}`;
+  
+  const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(personalInfo.email)}&cc=${encodeURIComponent(formData.email)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(emailBody)}`;
+  const outlookComposeUrl = `https://outlook.live.com/default.aspx?rru=compose&to=${encodeURIComponent(personalInfo.email)}&subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(emailBody)}`;
+  const yahooComposeUrl = `https://compose.mail.yahoo.com/?to=${encodeURIComponent(personalInfo.email)}&subj=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(emailBody)}`;
+
   const copyToClipboard = (text: string, key: 'to' | 'cc' | 'subject' | 'body') => {
     navigator.clipboard.writeText(text);
     setCopiedStates(prev => ({ ...prev, [key]: true }));
@@ -66,27 +75,18 @@ export default function Contact() {
     setIsSubmitting(true);
     setShowErrors(false);
 
-    const subject = formData.subject.trim() || 'Software Quality Inquiry';
-    const emailBody = `Hi Tahsin,\n\n${formData.message}\n\nSincerely,\n${formData.name}\nEmail: ${formData.email}`;
-    
-    // Set up standard mailtoUrl. CC the sender so they are guaranteed to receive a copy of this thread.
-    const mailtoUrl = `mailto:${personalInfo.email}?cc=${encodeURIComponent(formData.email)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
-    
-    // Store the generated link for fallback
+    // Store the generated link
     setLastMailto(mailtoUrl);
 
-    // Synchronously try opening the mail application to bypass async popup & security blocks!
+    // Direct client mailto invocation
     try {
       window.location.href = mailtoUrl;
-    } catch (err) {
-      console.warn("Mailto redirection issue:", err);
+    } catch (mailtoErr) {
+      console.warn('Mailto redirection issue:', mailtoErr);
     }
-
-    // Delay showing the success view slightly for better user pacing
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmitted(true);
-    }, 800);
+    
+    setIsSubmitting(false);
+    setSubmitted(true);
   };
 
   return (
@@ -191,61 +191,88 @@ export default function Contact() {
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 hover:shadow-lg transition-all text-left">
               
               {submitted ? (
-                <div className="py-8 text-center space-y-6">
-                  <div className="w-16 h-16 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-center text-emerald-600 mx-auto animate-bounce shadow-inner">
-                    <CheckCircle className="w-8 h-8" />
+                <div className="py-6 text-center space-y-6 animate-fade-in">
+                  <div className="w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto shadow-inner bg-blue-50 border-blue-100 text-blue-600 animate-pulse">
+                    <Mail className="w-8 h-8 text-blue-600" />
                   </div>
                   
-                  <div className="space-y-1.5 px-4 w-full">
-                    <h3 className="text-xl font-bold text-slate-900 font-sans">Message Prepared & Ready!</h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto leading-relaxed">
-                      To ensure you get a duplicate of your message, please choose one of the reliable methods below to finalize sending.
+                  <div className="space-y-2 px-4 w-full">
+                    <h3 className="text-xl font-bold text-slate-900 font-sans">
+                      Secure Email Draft Ready!
+                    </h3>
+                    <p className="text-slate-600 text-sm max-w-xl mx-auto leading-relaxed">
+                      To guarantee reliable, direct delivery directly to <strong>{personalInfo.email}</strong>, we have prepared a secure email draft. If your mail app did not open automatically, please click one of the quick options below or copy-paste using the toolkit:
                     </p>
                   </div>
 
-                  {/* Two-Column Options Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto text-left pt-2 pb-1 px-1">
-                    {/* Column 1: Direct Link */}
-                    <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-5 flex flex-col justify-between space-y-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900 font-sans flex items-center space-x-2">
-                          <span className="w-2 h-2 bg-blue-500 rounded-full inline-block animate-ping"></span>
-                          <span>Option A: Auto-Draft (Recommended)</span>
-                        </h4>
-                        <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                          Opens your computer or phone's standard mail app (like Outlook, Mail, or Gmail) with all fields pre-filled. You are CC'ed automatically.
-                        </p>
-                      </div>
-                      
-                      {lastMailto && (
-                        <a
-                          href={lastMailto}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center space-x-1.5 w-full px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md hover:shadow-blue-500/10 transition-all cursor-pointer text-center"
-                        >
-                          <Send className="w-3.5 h-3.5 text-white" />
-                          <span>Launch Mail Application</span>
-                        </a>
-                      )}
-                    </div>
+                  {/* 1-Click Send Grid */}
+                  <div className="space-y-3 max-w-2xl mx-auto pt-1 pb-2 text-left px-1">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono pl-1">
+                      ⚡ Instant Send Options (1-Click)
+                    </span>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Default Client Mailto */}
+                      <a
+                        href={lastMailto || mailtoUrl}
+                        className="flex items-center space-x-3 p-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-sm cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        <div className="bg-white/15 p-2 rounded-lg shrink-0">
+                          <Mail className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left overflow-hidden">
+                          <span className="block text-xs font-bold font-sans">Launch Default App</span>
+                          <span className="block text-[10px] opacity-80 truncate">Windows/Mail/Outlook Client</span>
+                        </div>
+                      </a>
 
-                    {/* Column 2: Explanation of Manual Copy */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800 font-sans flex items-center space-x-2">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block"></span>
-                          <span>Option B: Manual Send (100% Secure)</span>
-                        </h4>
-                        <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                          If clicking the button didn't open your client, or you use webmail (Gmail/Outlook on browsers), copy the draft parameters from our copy assistant tool.
-                        </p>
-                      </div>
-                      
-                      <div className="text-xs text-slate-500 font-semibold flex items-center space-x-1.5">
-                        <span className="inline-block bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px]">Backup Mode</span>
-                        <span>Interactive draft below 👇</span>
-                      </div>
+                      {/* Gmail Compose */}
+                      <a
+                        href={gmailComposeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-3 p-4 bg-rose-50 border border-rose-100 hover:bg-rose-100/50 text-rose-700 rounded-xl shadow-sm cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        <div className="bg-rose-500 text-white p-2 rounded-lg shrink-0">
+                          <Send className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left overflow-hidden">
+                          <span className="block text-xs font-bold font-sans">Send via Gmail Web</span>
+                          <span className="block text-[10px] text-rose-500/90 truncate">Compose inside mail.google.com</span>
+                        </div>
+                      </a>
+
+                      {/* Outlook Compose */}
+                      <a
+                        href={outlookComposeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-3 p-4 bg-sky-50 border border-sky-100 hover:bg-sky-100/50 text-sky-700 rounded-xl shadow-sm cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        <div className="bg-sky-500 text-white p-2 rounded-lg shrink-0">
+                          <ExternalLink className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left overflow-hidden">
+                          <span className="block text-xs font-bold font-sans">Send via Outlook.com</span>
+                          <span className="block text-[10px] text-sky-600/90 truncate">Compose inside outlook.live.com</span>
+                        </div>
+                      </a>
+
+                      {/* Yahoo Compose */}
+                      <a
+                        href={yahooComposeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-3 p-4 bg-purple-50 border border-purple-100 hover:bg-purple-100/50 text-purple-700 rounded-xl shadow-sm cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        <div className="bg-purple-600 text-white p-2 rounded-lg shrink-0">
+                          <FileText className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left overflow-hidden">
+                          <span className="block text-xs font-bold font-sans">Send via Yahoo Mail</span>
+                          <span className="block text-[10px] text-purple-600/90 truncate">Compose in compose.mail.yahoo.com</span>
+                        </div>
+                      </a>
                     </div>
                   </div>
 

@@ -82,7 +82,7 @@ export default function LinkedInPreviewModal({ isOpen, onClose }: LinkedInPrevie
         ...prev,
         {
           sender: 'tahsin',
-          text: 'Thanks for the message! Since this is a public mirror, your message is saved to local state. To discuss further, feel free to submit the contact form at the bottom of the main website or write to tahsinln30@yahoo.com directly!',
+          text: `Thanks for the message! Since this is a public mirror, your message is saved to local state. To discuss further, feel free to submit the contact form at the bottom of the main website or write to ${personalInfo.email} directly!`,
           time: 'Just now'
         }
       ]);
@@ -250,7 +250,7 @@ export default function LinkedInPreviewModal({ isOpen, onClose }: LinkedInPrevie
                         <div className="flex flex-wrap items-center gap-2 pt-2">
                           <button
                             onClick={() => {
-                              const alertMsg = 'You are now simulating connection details! Direct email is tahsinln30@yahoo.com.';
+                              const alertMsg = `You are now simulating connection details! Direct email is ${personalInfo.email}.`;
                               alert(alertMsg);
                             }}
                             className="bg-[#0a66c2] hover:bg-[#004182] text-white font-bold text-sm px-5 py-2 rounded-full cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
